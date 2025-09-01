@@ -29,7 +29,9 @@ setup(
             'gym_bridge = f1tenth_gym_ros.gym_bridge:main',
             'const_vel = f1tenth_gym_ros.const_vel:main',
             'path_publish = f1tenth_gym_ros.path_publish:main',
-            'stan_code1 = f1tenth_gym_ros.stan_code1:main'
+            'stan_code1 = f1tenth_gym_ros.stan_code1:main',
+            'stan_base2 = f1tenth_gym_ros.stan_base2:main',
+            'stan_code3 = f1tenth_gym_ros.stan_code3:main',
         ],
     },
 )

@@ -1,3 +1,6 @@
+<<<<<<< HEAD
+This repository contains my attempt to implement the Stanley controller in the F1TENTH gym environment. I have some basic knowledge of ROS2, and through this project I’m aiming to deepen my understanding while also getting comfortable with GitHub. After completing the software implementation, I plan to extend this work to hardware. The below is all the readme content of original repo
+
 # F1TENTH gym environment ROS2 communication bridge
 This is a containerized ROS communication bridge for the F1TENTH gym environment that turns it into a simulation in ROS2.
 
@@ -158,3 +161,6 @@ There are multiple ways to launch your own agent to control the vehicles.
 
 - The first one is creating a new package for your agent in the `/sim_ws` workspace inside the sim container. After launch the simulation, launch the agent node in another bash session while the sim is running.
 - The second one is to create a new ROS 2 container for you agent node. Then create your own package and nodes inside. Launch the sim container and the agent container both. With default networking configurations for `docker`, the behavior is to put The two containers on the same network, and they should be able to discover and talk to each other on different topics. If you're using noVNC, create a new service in `docker-compose.yml` for your agent node. You'll also have to put your container on the same network as the sim and novnc containers.
+=======
+
+This repository contains my attempt to implement the Stanley controller in the F1TENTH gym environment. I have some basic knowledge of ROS2, and through this project I’m aiming to deepen my understanding while also getting comfortable with GitHub. After completing the software implementation, I plan to extend this work to hardware. 
