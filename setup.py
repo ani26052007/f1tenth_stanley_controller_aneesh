@@ -26,7 +26,10 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'gym_bridge = f1tenth_gym_ros.gym_bridge:main'
+            'gym_bridge = f1tenth_gym_ros.gym_bridge:main',
+            'const_vel = f1tenth_gym_ros.const_vel:main',
+            'path_publish = f1tenth_gym_ros.path_publish:main',
+            'stan_code1 = f1tenth_gym_ros.stan_code1:main'
         ],
     },
 )
