@@ -90,7 +90,8 @@ class StanleyControllerNode(Node):
         
         # Enhanced speed control for turns
         current_curvature = abs(curvature[idx])
-        reference_speed = vx_path[idx]  # Now correctly accessing column 2
+        # reference_speed = vx_path[idx]  # Now correctly accessing column 2
+        max_speed = 10
         
         # More aggressive speed reduction for turns
         if current_curvature > 0.0002:    # Sharp turn (adjusted for your curvature scale)
@@ -103,7 +104,7 @@ class StanleyControllerNode(Node):
         else:                             # Straight
             speed_factor = 1.0
         
-        target_speed = reference_speed * speed_factor
+        target_speed = max_speed * speed_factor
         target_speed = np.clip(target_speed, 2.0, 6.0)  # Reasonable speed limits
         
         return delta, target_speed
