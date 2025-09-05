@@ -8,13 +8,12 @@ class StanleyControllerNode(Node):
     def __init__(self):
         super().__init__('stanley_controller')
 
-        self.k = 5
+        self.k = 3
         self.max_steering = np.radians(25)
         
-        self.v_min = 1.0
-        self.v_max = 5
-        self.beta = 20
-        self.delta_0 = np.radians(15)
+        self.v_min = 1
+        self.v_max = 10.0
+        self.base_speed = 7.0
         
         self.path = self.load_path()
         
@@ -28,48 +27,75 @@ class StanleyControllerNode(Node):
             AckermannDriveStamped, '/drive', 10)
         
         self.get_logger().info(f'Stanley Controller initialized with {len(self.path[0])} waypoints')
-        self.get_logger().info(f'Parameters: v_min={self.v_min}, v_max={self.v_max}, δ_0={np.degrees(self.delta_0):.1f}°, β={self.beta}')
-        
-        self.log_speed_examples()
+        self.get_logger().info(f'Speed: base={self.base_speed}, min={self.v_min}, max={self.v_max}')
 
     def load_path(self):
         try:
-            data = np.loadtxt('/sim_ws/src/f1tenth_gym_ros/f1tenth_gym_ros/csv_spielberg_map.csv',
-                             delimiter=';', comments='#', skiprows=2, dtype=float)
+            data = np.loadtxt('/sim_ws/src/f1tenth_gym_ros/f1tenth_gym_ros/spilberg_centerline.csv',
+                             delimiter=',', dtype=float)
             
             x_path = data[:, 0]
             y_path = data[:, 1]
-            vx_path = data[:, 2]
-            path_yaw = data[:, 3]
-            curvature = data[:, 4]
+            
+            # Calculate path headings from consecutive points
+            dx = np.diff(x_path)
+            dy = np.diff(y_path)
+            path_yaw = np.arctan2(dy, dx)
+            path_yaw = np.append(path_yaw, path_yaw[-1])  # Duplicate last heading
             
             self.get_logger().info(f'CSV data shape: {data.shape}')
-            self.get_logger().info(f'Original speed range: {vx_path.min():.1f}-{vx_path.max():.1f} m/s')
+            self.get_logger().info(f'Path length: {len(x_path)} waypoints')
             
         except Exception as e:
             self.get_logger().error(f'Error loading CSV: {str(e)}')
-            return np.array([]), np.array([]), np.array([]), np.array([]), np.array([])
+            return np.array([]), np.array([]), np.array([])
         
-        return x_path, y_path, vx_path, path_yaw, curvature
+        return x_path, y_path, path_yaw
 
-    def log_speed_examples(self):
-        test_angles = [0.0, 5.0, 10.0, 15.0, 20.0, 25.0]
+    def calculate_curvature(self, idx):
+        """Calculate local curvature from path geometry"""
+        x_path, y_path, path_yaw = self.path
         
-        self.get_logger().info('=== Speed Examples ===')
-        for angle_deg in test_angles:
-            angle_rad = np.radians(angle_deg)
-            speed = self.steering_based_speed(angle_rad)
-            self.get_logger().info(f'  Steering {angle_deg:2.0f}° → Speed {speed:.2f} m/s')
+        if idx == 0 or idx >= len(path_yaw) - 1:
+            return 0.0
+        
+        # Simple curvature approximation using heading change
+        heading_change = abs(self.normalize_angle(path_yaw[idx+1] - path_yaw[idx-1]))
+        
+        # Distance between points
+        dx = x_path[idx+1] - x_path[idx-1]
+        dy = y_path[idx+1] - y_path[idx-1]
+        distance = np.hypot(dx, dy)
+        
+        if distance < 0.1:
+            return 0.0
+        
+        curvature = heading_change / distance
+        return curvature
 
-    def steering_based_speed(self, steering_angle):
-        abs_steering = abs(steering_angle)
-        exponent = self.beta * (abs_steering - self.delta_0)
-        exponent = np.clip(exponent, -500, 500)
+    def speed_control(self, curvature, cross_track_error):
+        """Simple speed control based on curvature and cross-track error"""
         
-        sigmoid_denominator = 1 + np.exp(exponent)
-        target_speed = self.v_min + (self.v_max - self.v_min) / sigmoid_denominator
+        # Speed reduction based on curvature
+        if curvature > 0.3:
+            curve_speed = self.v_min
+        elif curvature > 0.1:
+            curve_speed = self.v_min + (self.base_speed - self.v_min) * (0.3 - curvature) / 0.2
+        else:
+            curve_speed = self.base_speed
         
-        return target_speed
+        # Speed reduction based on cross-track error
+        abs_cte = abs(cross_track_error)
+        if abs_cte > 1.0:
+            cte_speed = self.v_min
+        elif abs_cte > 0.5:
+            cte_speed = self.base_speed * (1.5 - abs_cte) / 1.0
+        else:
+            cte_speed = self.v_max
+        
+        # Take minimum of both constraints
+        target_speed = min(curve_speed, cte_speed)
+        return np.clip(target_speed, self.v_min, self.v_max)
 
     def odom_callback(self, msg):
         if len(self.path[0]) == 0:
@@ -93,7 +119,7 @@ class StanleyControllerNode(Node):
         self.drive_pub.publish(drive_msg)
 
     def stanley_control(self, x, y, yaw, v):
-        x_path, y_path, vx_path, path_yaw, curvature = self.path
+        x_path, y_path, path_yaw = self.path
 
         dx = x_path - x
         dy = y_path - y
@@ -109,13 +135,15 @@ class StanleyControllerNode(Node):
         delta = heading_error + cte_term
         delta = np.clip(delta, -self.max_steering, self.max_steering)
         
-        target_speed = self.steering_based_speed(delta)
-        target_speed = np.clip(target_speed, 1, 8)
+        # Calculate local curvature and determine speed
+        curvature = self.calculate_curvature(idx)
+        target_speed = self.speed_control(curvature, cross_track_error)
         
-        if idx % 10 == 0:
+        if idx % 5 == 0:
             self.get_logger().info(
-                f'WP {idx}: δ={np.degrees(delta):.1f}°, '
-                f'v_target={target_speed:.2f} m/s, v_current={v:.2f} m/s, '
+                f'WP {idx}: curvature={curvature:.4f}, '
+                f'target_speed={target_speed:.2f} m/s, '
+                f'steering={np.degrees(delta):.1f}°, '
                 f'cte={cross_track_error:.3f}m'
             )
         

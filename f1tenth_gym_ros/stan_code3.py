@@ -95,12 +95,12 @@ class StanleyControllerNode(Node):
         
         # More aggressive speed reduction for turns
         if current_curvature > 0.0002:    # Sharp turn (adjusted for your curvature scale)
-            speed_factor = 0.5
+            speed_factor = 0.7
             self.get_logger().info(f'Turn detected: curvature={current_curvature:.6f}, reducing speed')
         elif current_curvature > 0.0001:  # Moderate turn
-            speed_factor = 0.7
+            speed_factor = 0.8
         elif current_curvature > 0.00005: # Gentle turn
-            speed_factor = 0.85
+            speed_factor = 0.9
         else:                             # Straight
             speed_factor = 1.0
         

@@ -32,6 +32,7 @@ setup(
             'stan_code3 = f1tenth_gym_ros.stan_code3:main',
             'stan_code_sigma_kappa = f1tenth_gym_ros.stan_code_sigma_kappa:main',
             'stan_code_sigma_steering = f1tenth_gym_ros.stan_code_sigma_steering:main',
+            'stan_code4 = f1tenth_gym_ros.stan_code4:main',
 
         ],
     },
