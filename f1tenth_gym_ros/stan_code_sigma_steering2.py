@@ -1,4 +1,4 @@
-#reaches speed of 9.03 m/s
+#reaches speed of 11.8 m/s on straights but on curves it goes till 4m/s
 import rclpy
 from rclpy.node import Node
 import numpy as np
@@ -8,14 +8,19 @@ from ackermann_msgs.msg import AckermannDriveStamped
 class StanleyControllerNode(Node):
     def __init__(self):
         super().__init__('stanley_controller')
-
-        self.k = 8
+        
+        # Optimized parameters for wall avoidance
+        self.k = 8                    # Reduced from 14 (less aggressive steering)
         self.max_steering = np.radians(25)
         
-        self.v_min = 1
-        self.v_max = 15
-        self.beta = 20
-        self.kappa_0 = 0.25
+        self.v_min = 4               # Lower for tight turns
+        self.v_max = 12                # Your target max
+        self.beta = 100               # More aggressive (was 60)
+        self.delta_0 = np.radians(1.5)   # Even earlier intervention (was 3°)
+        
+        # Add steering smoothing
+        self.last_steering = 0.0
+        self.max_steering_rate = np.radians(15)  # Limit steering changes
         
         self.path = self.load_path()
         
@@ -23,15 +28,15 @@ class StanleyControllerNode(Node):
             self.get_logger().error('Failed to load path!')
             return
 
-        self.auto_calculate_kappa_0()
-
         self.odom_sub = self.create_subscription(
             Odometry, '/ego_racecar/odom', self.odom_callback, 10)
         self.drive_pub = self.create_publisher(
             AckermannDriveStamped, '/drive', 10)
         
         self.get_logger().info(f'Stanley Controller initialized with {len(self.path[0])} waypoints')
-        self.get_logger().info(f'Parameters: v_min={self.v_min}, v_max={self.v_max}, κ_0={self.kappa_0:.6f}, β={self.beta}')
+        self.get_logger().info(f'Parameters: k={self.k}, v_min={self.v_min}, v_max={self.v_max}, δ_0={np.degrees(self.delta_0):.1f}°, β={self.beta}')
+        
+        self.log_speed_examples()
 
     def load_path(self):
         try:
@@ -53,41 +58,18 @@ class StanleyControllerNode(Node):
         
         return x_path, y_path, vx_path, path_yaw, curvature
 
-    def auto_calculate_kappa_0(self):
-        if len(self.path[0]) == 0:
-            return
-            
-        curvature = self.path[4]
-        abs_curvature = np.abs(curvature)
-        non_zero_curvature = abs_curvature[abs_curvature > 1e-6]
+    def log_speed_examples(self):
+        test_angles = [0.0, 2.0, 5.0, 10.0, 15.0, 20.0, 25.0]
         
-        if len(non_zero_curvature) == 0:
-            self.get_logger().warn('No significant curvature found, using default κ_0')
-            return
-        
-        curvature_stats = {
-            'min': abs_curvature.min(),
-            'max': abs_curvature.max(),
-            'mean': abs_curvature.mean(),
-            'median': np.median(abs_curvature),
-            'percentile_25': np.percentile(abs_curvature, 25),
-            'percentile_50': np.percentile(abs_curvature, 50),
-            'percentile_75': np.percentile(abs_curvature, 75),
-            'percentile_90': np.percentile(abs_curvature, 90)
-        }
-        
-        self.get_logger().info('=== Curvature Analysis ===')
-        for key, value in curvature_stats.items():
-            self.get_logger().info(f'  {key}: {value:.6f} m⁻¹')
-        
-        self.kappa_0 = curvature_stats['percentile_50']
-        self.kappa_0 = np.clip(self.kappa_0, 0.01, 2.0)
-        
-        self.get_logger().info(f'Auto-calculated κ_0 = {self.kappa_0:.6f} m⁻¹')
+        self.get_logger().info('=== Speed Examples ===')
+        for angle_deg in test_angles:
+            angle_rad = np.radians(angle_deg)
+            speed = self.steering_based_speed(angle_rad)
+            self.get_logger().info(f'  Steering {angle_deg:2.0f}° → Speed {speed:.2f} m/s')
 
-    def curvature_based_speed(self, kappa):
-        abs_kappa = abs(kappa)
-        exponent = self.beta * (abs_kappa - self.kappa_0)
+    def steering_based_speed(self, steering_angle):
+        abs_steering = abs(steering_angle)
+        exponent = self.beta * (abs_steering - self.delta_0)
         exponent = np.clip(exponent, -500, 500)
         
         sigmoid_denominator = 1 + np.exp(exponent)
@@ -133,16 +115,21 @@ class StanleyControllerNode(Node):
         delta = heading_error + cte_term
         delta = np.clip(delta, -self.max_steering, self.max_steering)
         
-        current_curvature = curvature[idx]
-        target_speed = self.curvature_based_speed(current_curvature)
-        target_speed = np.clip(target_speed, 5, 12)
+        # Apply steering rate limiting to prevent sudden changes
+        steering_diff = delta - self.last_steering
+        if abs(steering_diff) > self.max_steering_rate:
+            delta = self.last_steering + np.sign(steering_diff) * self.max_steering_rate
+        self.last_steering = delta
         
-        if idx % 10 == 0:
+        # Calculate target speed - FIX THE BUG HERE!
+        target_speed = self.steering_based_speed(delta)
+        target_speed = np.clip(target_speed, self.v_min, self.v_max)  # ✅ Use tuned parameters!
+        
+        if idx % 5 == 0:  # More frequent logging
             self.get_logger().info(
-                f'Waypoint {idx}: κ={current_curvature:.6f} m⁻¹, '
-                f'target_speed={target_speed:.2f} m/s, '
-                f'steering={np.degrees(delta):.1f}°, '
-                f'cte={cross_track_error:.3f}m'
+                f'WP {idx}: δ={np.degrees(delta):.1f}°, '
+                f'v_target={target_speed:.2f} m/s, v_current={v:.2f} m/s, '
+                f'cte={cross_track_error:.3f}m, κ={curvature[idx]:.4f}'
             )
         
         return delta, target_speed

@@ -1,3 +1,4 @@
+#goes with const velocity of 8m/s across all curve
 import rclpy
 from rclpy.node import Node
 import numpy as np
@@ -7,14 +8,14 @@ from ackermann_msgs.msg import AckermannDriveStamped
 class StanleyControllerNode(Node):
     def __init__(self):
         super().__init__('stanley_controller')
-
-        self.k = 5
+        self.k = 15                   # Increase from 8 (critical fix)
         self.max_steering = np.radians(25)
-        
-        self.v_min = 1.0
-        self.v_max = 5
-        self.beta = 20
-        self.delta_0 = np.radians(15)
+
+        self.v_min = 4
+        self.v_max = 16             
+        self.beta = 20               
+        self.delta_0 = np.radians(15)  
+
         
         self.path = self.load_path()
         
@@ -110,7 +111,7 @@ class StanleyControllerNode(Node):
         delta = np.clip(delta, -self.max_steering, self.max_steering)
         
         target_speed = self.steering_based_speed(delta)
-        target_speed = np.clip(target_speed, 1, 8)
+        target_speed = np.clip(target_speed, self.v_min, 8)
         
         if idx % 10 == 0:
             self.get_logger().info(

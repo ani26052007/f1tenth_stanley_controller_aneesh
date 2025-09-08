@@ -12,13 +12,13 @@ class PathPublisher(Node):
         timer_period = 1.0
         self.timer = self.create_timer(timer_period, self.timer_callback)
         
-        self.waypoints = self.read_waypoints('/sim_ws/src/f1tenth_gym_ros/f1tenth_gym_ros/spilberg_centerline.csv')
+        self.waypoints = self.read_waypoints('/sim_ws/src/f1tenth_gym_ros/f1tenth_gym_ros/csv_spielberg_map.csv')
         self.get_logger().info(f'Loaded {len(self.waypoints)} waypoints')
 
     def read_waypoints(self, csv_filename):
         try:
             # FIXED: Load only first 2 columns (x, y) using usecols parameter
-            data = np.loadtxt(csv_filename, delimiter=',', usecols=(0,1), comments='#')
+            data = np.loadtxt(csv_filename, delimiter=';', usecols=(0,1), comments='#')
             waypoints = [(x, y) for x, y in data]
             return waypoints
         except Exception as e:
