@@ -35,6 +35,7 @@ setup(
             'stan_code_sigma_steering2 = f1tenth_gym_ros.stan_code_sigma_steering2:main',
             'stan_code4 = f1tenth_gym_ros.stan_code4:main',
             'stan_code5 = f1tenth_gym_ros.stan_code5:main',
+            'stan_code_exp = f1tenth_gym_ros.stan_code_exp:main',
 
         ],
     },

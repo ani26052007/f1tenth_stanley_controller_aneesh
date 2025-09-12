@@ -1,4 +1,4 @@
-#reaches speed of 10.05 m/s with min velocity of 5.3 m/s on curves
+#reaches speed of 10.99 m/s with min velocity of 6 m/s on curves - CONVERTED TO TANH
 import rclpy
 from rclpy.node import Node
 import numpy as np
@@ -12,9 +12,10 @@ class StanleyControllerNode(Node):
         self.k = 8
         self.max_steering = np.radians(25)
         
-        self.v_min = 5
+        self.v_min = 6
         self.v_max = 15
-        self.beta = 20
+        # CONVERTED: beta becomes steepness for tanh function
+        self.steepness = 20  # Equivalent to your previous beta=20
         self.kappa_0 = 0.25
         
         self.path = self.load_path()
@@ -31,7 +32,8 @@ class StanleyControllerNode(Node):
             AckermannDriveStamped, '/drive', 10)
         
         self.get_logger().info(f'Stanley Controller initialized with {len(self.path[0])} waypoints')
-        self.get_logger().info(f'Parameters: v_min={self.v_min}, v_max={self.v_max}, κ_0={self.kappa_0:.6f}, β={self.beta}')
+        self.get_logger().info(f'Parameters: v_min={self.v_min}, v_max={self.v_max}, κ_0={self.kappa_0:.6f}, steepness={self.steepness}')
+        self.get_logger().info('Using HYPERBOLIC TANGENT (tanh) speed control')
 
     def load_path(self):
         try:
@@ -86,12 +88,24 @@ class StanleyControllerNode(Node):
         self.get_logger().info(f'Auto-calculated κ_0 = {self.kappa_0:.6f} m⁻¹')
 
     def curvature_based_speed(self, kappa):
+        """
+        CONVERTED: Hyperbolic Tangent (tanh) speed control
+        Replaces the sigmoid function with tanh for smoother, more predictable behavior
+        """
         abs_kappa = abs(kappa)
-        exponent = self.beta * (abs_kappa - self.kappa_0)
-        exponent = np.clip(exponent, -500, 500)
         
-        sigmoid_denominator = 1 + np.exp(exponent)
-        target_speed = self.v_min + (self.v_max - self.v_min) / sigmoid_denominator
+        # Normalize curvature around kappa_0
+        normalized_kappa = self.steepness * (abs_kappa - self.kappa_0)
+        
+        # Clip to prevent numerical overflow (tanh saturates naturally, but be safe)
+        normalized_kappa = np.clip(normalized_kappa, -500, 500)
+        
+        # Use tanh for smooth S-curve transition
+        # tanh ranges from -1 to +1, we want 0 to 1 for speed scaling
+        tanh_factor = (1 - np.tanh(normalized_kappa)) / 2
+        
+        # Scale between v_min and v_max
+        target_speed = self.v_min + (self.v_max - self.v_min) * tanh_factor
         
         return target_speed
 
@@ -138,9 +152,18 @@ class StanleyControllerNode(Node):
         target_speed = np.clip(target_speed, self.v_min, self.v_max)
         
         if idx % 10 == 0:
+            # Enhanced logging to show tanh behavior
+            abs_kappa = abs(current_curvature)
+            normalized = self.steepness * (abs_kappa - self.kappa_0)
+            tanh_value = np.tanh(normalized)
+            tanh_factor = (1 - tanh_value) / 2
+            
+            speed_mode = "MAX_SPEED" if abs_kappa <= self.kappa_0 else "CURVED"
+            
             self.get_logger().info(
-                f'Waypoint {idx}: κ={current_curvature:.6f} m⁻¹, '
+                f'Waypoint {idx}: κ={current_curvature:.6f} m⁻¹ ({speed_mode}), '
                 f'target_speed={target_speed:.2f} m/s, '
+                f'tanh_factor={tanh_factor:.3f}, '
                 f'steering={np.degrees(delta):.1f}°, '
                 f'cte={cross_track_error:.3f}m'
             )
